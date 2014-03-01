@@ -52,10 +52,9 @@ class WriterWrapper(object):
         self.f = f
         self.buff = []
         self.buff_len = 0
-        self.poll = None
+        self.poll = False
         if hasattr(f, 'fileno'):
-            self.poll = select.poll()
-            self.poll.register(f, select.POLLOUT | select.POLLERR | select.POLLHUP | select.POLLNVAL)
+            self.poll = True
         self.closed = False
 
     def close(self):
@@ -82,7 +81,13 @@ class WriterWrapper(object):
             return
         res = []
         while not res and not self.closed:
-            res = self.poll.poll(self.poll_timeout)
+            try:
+                res = select.select([], [self.f], [self.f], self.poll_timeout)
+            except select.error, error:
+                if error[0] == 9: # Bad file descriptor
+                    self.closed = True
+                else:
+                    raise
         if self.closed:
             raise EOFError
 
@@ -119,10 +124,9 @@ class ReaderWrapper(object):
 
     def __init__(self, f):
         self.file = f
-        self.poll = None
+        self.poll = False
         if hasattr(f, 'fileno'):
-            self.poll = select.poll()
-            self.poll.register(f, select.POLLIN | select.POLLPRI | select.POLLERR | select.POLLHUP | select.POLLNVAL)
+            self.poll = True
         self.closed = False
 
     def __iter__(self):
@@ -150,7 +154,13 @@ class ReaderWrapper(object):
             return
         res = []
         while not res and not self.closed:
-            res = self.poll.poll(self.poll_timeout)
+            try:
+                res = select.select([self.file], [], [self.file], self.poll_timeout)
+            except select.error, error:
+                if error[0] == 9: # Bad file descriptor
+                    self.closed = True
+                else:
+                    raise
         if self.closed:
             raise EOFError
 
